@@ -52,18 +52,15 @@ const int ELBOW_MIN = 1000;
 
 const int BUZZER_PIN = 12;
 
+const int BRADS_IDX = 0;
+const int DURATION_IDX = 1;
+const int FREQUENCY_IDX = 0;
+
 // Create servo objects for each channel
 Servo azimuthServo;
 Servo shoulderServo;
 Servo elbowServo;
 Servo gripperServo;
-
-// Variables for receiving and sending serial data
-const unsigned int BUFFER_SIZE = 64; // how much serial data we expect before a newline
-char input[BUFFER_SIZE];
-char response[BUFFER_SIZE];
-
-bool respAvail = false;
 
 void setup() {
   Serial.begin (9600);
@@ -79,17 +76,26 @@ void setup() {
 }
 
 void loop() {
+  // Variables for receiving and sending serial data
+  const unsigned int BUFFER_SIZE = 64; // how much serial data we expect before a newline
+  static char input[BUFFER_SIZE];
+  static char response[BUFFER_SIZE];
+  static unsigned int buffIdx = 0;
+  static bool respAvail = false;
+
   // if serial data available, process it
   if (Serial.available () > 0) {
-    static unsigned int buffIdx = 0;
     byte inByte = Serial.read();
 
     switch (inByte)
     {
       case '\n':   // end of line
-        input[buffIdx] = 0;    // terminating null byte.
-        processCmd();          // process the command and formulate the response.
-        buffIdx = 0;           // reset index for next time
+        // Null terminate the input, process the command, and formulate the response.
+        input[buffIdx] = 0;
+        processCmd(input, response);
+
+        // Reset the index for next command.
+        buffIdx = 0;
         break;
 
       case '\r':   // discard carriage return
@@ -103,7 +109,7 @@ void loop() {
     }
   }
 
-  // Send response if one is available.
+  // A response may be available due, send it if one is available.
   if (respAvail)
   {
     Serial.println(response);
@@ -127,7 +133,7 @@ unsigned int djb2Hash(char *str)
 /* Extract the command and arguments.
  * Forumlates the response.
  */
-void processCmd()
+void processCmd(char input[], char response[])
 {
   const unsigned int MAX_ARGS = 6;     // Maxium number of arguments per command
   int argv[MAX_ARGS];
@@ -148,100 +154,106 @@ void processCmd()
     token = strtok(NULL, ",");
   }
 
-  // Dispatch to the processing routine.
+  // Declare a function pointer that matches the processing routine signature.
+  int (*fptr)(int, int [], char []);
+
+  // Select a processing routine using the precomputed hashes.
   switch (hash)
   {
     case H_AZIMUTH:
-      azimuth(argc, argv);
+      fptr = &azimuth;
       break;
 
     case H_SHOULDER:
-      shoulder(argc, argv);
+      fptr = shoulder;
       break;
 
     case H_ELBOW:
-      elbow(argc, argv);
+      fptr = elbow;
       break;
 
     case H_GRIPPER:
-      gripper(argc, argv);
+      fptr = gripper;
       break;
 
     case H_HOME:
-      home(argc, argv);
+      fptr = home;
       break;
 
     case H_SLEW:
-      slew(argc, argv);
+      fptr = slew;
       break;
 
     case H_LED:
-      led(argc, argv);
+      fptr = led;
       break;
 
     case H_TONE:
-      buzzer(argc, argv);
+      fptr = buzzer;
       break;
 
     default:
-      unsupported(argc, argv);
-  } 
+      fptr = unsupported;
+  }
+
+  // Dispatch to the processing routine.
+  fptr(argv, argc, response);
 }
 
 // Command handlers here
 
-void azimuth(int argc, int argv[])
+void azimuth(int argc, int argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew.
 }
 
-void shoulder(int argc, int argv[])
+void shoulder(int argc, int argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
 }
 
-void elbow(int argc, int argv[])
+void elbow(int argc, int argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
 }
 
-void gripper(int argc, int argv[])
+void gripper(int argc, int argv[], char response[])
 {
   // arv[0] is gripper state, 1 = close, 0 = open
   gripperServo.writeMicroseconds(argv[0] ? GRIPPER_CLOSED : GRIPPER_OPEN);
 }
 
-void home(int argc, int argv[])
+void home(int argc, int argv[], char response[])
 {
   // set up arguments for each call.
   argc = 2;
-  argv[0] = AZIMUTH_CENTER;
-  argv[1] = 1000;
-  azimuth(argc, argv);
-  argv[0] = ELBOW_CENTER;
-  elbow(argc, argv);
-  argv[0] = 0;
-  gripper(argc, argv);
-  argv[0] = SHOULDER_CENTER;
-  shoulder(argc, argv);
+  argv[BRADS_IDX] = AZIMUTH_CENTER;
+  argv[DURATION_IDX] = 1000;
+  azimuth(argc, argv, response);
+  argv[BRADS_IDX] = ELBOW_CENTER;
+  elbow(argc, argv, response);
+  argv[BRADS_IDX] = 0;
+  gripper(argc, argv, response);
+  argv[BRADS_IDX] = SHOULDER_CENTER;
+  shoulder(argc, argv, response);
 }
 
-void slew(int argc, int argv[])
+void slew(int argc, int argv[], char response[])
 {
 
 }
 
-void led(int argc, int argv[])
+void led(int argc, int argv[], char response[])
 {
   digitalWrite(LED_BUILTIN, argv[0] ? HIGH : LOW);
 }
 
-void buzzer(int argc, int argv[])
+void buzzer(int argc, int argv[], char response[])
 {
-  tone(BUZZER_PIN, argv[0], argv[1]);
+  tone(BUZZER_PIN, argv[FREQUENCY_IDX], argv[DURATION_IDX]);
 }
 
-void unsupported(int argc, int argv[])
+void unsupported(int argc, int argv[], char response[])
 {
   strcat(response, " - unsupported command.");
 }
