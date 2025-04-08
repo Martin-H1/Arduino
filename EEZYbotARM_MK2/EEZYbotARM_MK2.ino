@@ -56,6 +56,8 @@ const int BRADS_IDX = 0;
 const int DURATION_IDX = 1;
 const int FREQUENCY_IDX = 0;
 
+const char MISSING_ARGS[] = " - insuffcient arguments.";
+
 // Create servo objects for each channel
 Servo azimuthServo;
 Servo shoulderServo;
@@ -81,7 +83,6 @@ void loop() {
   static char input[BUFFER_SIZE];
   static char response[BUFFER_SIZE];
   static unsigned int buffIdx = 0;
-  static bool respAvail = false;
 
   // if serial data available, process it
   if (Serial.available () > 0) {
@@ -107,13 +108,6 @@ void loop() {
           input[buffIdx++] = tolower(inByte);
         break;
     }
-  }
-
-  // A response may be available due, send it if one is available.
-  if (respAvail)
-  {
-    Serial.println(response);
-    respAvail = false;
   }
 }
 
@@ -148,7 +142,8 @@ void processCmd(char input[], char response[])
   unsigned int hash = djb2Hash(response);
 
   // Extract the remaining tokens into the args array.
-  while (token != NULL)
+  token = strtok(NULL, ",");
+  while (token != NULL && argc < MAX_ARGS)
   {
     argv[argc++] = atoi(token);
     token = strtok(NULL, ",");
@@ -197,7 +192,10 @@ void processCmd(char input[], char response[])
   }
 
   // Dispatch to the processing routine.
-  fptr(argv, argc, response);
+  fptr(argc, argv, response);
+
+  // Send reponse to host.
+  Serial.println(response);
 }
 
 // Command handlers here
@@ -205,6 +203,17 @@ void processCmd(char input[], char response[])
 void azimuth(int argc, int argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew.
+  if (argc > 1)
+  {
+    // Convert brads into microseconds
+    int value = AZIMUTH_CENTER + argv[0];
+
+    value = constrain(value, AZIMUTH_MIN, AZIMUTH_MAX);
+    azimuthServo.writeMicroseconds(value);
+    sprintf(response, "azimuth - %d.", value);
+  }
+  else
+    strcat(response, MISSING_ARGS);
 }
 
 void shoulder(int argc, int argv[], char response[])
@@ -219,8 +228,14 @@ void elbow(int argc, int argv[], char response[])
 
 void gripper(int argc, int argv[], char response[])
 {
-  // arv[0] is gripper state, 1 = close, 0 = open
-  gripperServo.writeMicroseconds(argv[0] ? GRIPPER_CLOSED : GRIPPER_OPEN);
+  if (argc > 0)
+  {
+    // arv[0] is gripper state, 1 = close, 0 = open
+    gripperServo.writeMicroseconds(argv[0] ? GRIPPER_CLOSED : GRIPPER_OPEN);
+    strcat(response, argv[0] != 0 ? " - closed." : " - open.");
+  }
+  else
+    strcat(response, MISSING_ARGS);
 }
 
 void home(int argc, int argv[], char response[])
@@ -245,12 +260,24 @@ void slew(int argc, int argv[], char response[])
 
 void led(int argc, int argv[], char response[])
 {
-  digitalWrite(LED_BUILTIN, argv[0] ? HIGH : LOW);
+  if (argc > 0)
+  {
+    digitalWrite(LED_BUILTIN, argv[0]);
+    strcat(response, argv[0] != 0 ? " - high." : " - low.");
+  }
+  else
+    strcat(response, MISSING_ARGS);
 }
 
 void buzzer(int argc, int argv[], char response[])
 {
-  tone(BUZZER_PIN, argv[FREQUENCY_IDX], argv[DURATION_IDX]);
+  if (argc > 1)
+  {
+    tone(BUZZER_PIN, argv[FREQUENCY_IDX], argv[DURATION_IDX]);
+    sprintf(response, "tone - frequency %d, duration %d.", argv[FREQUENCY_IDX], argv[DURATION_IDX]);
+  }
+  else
+    strcat(response, MISSING_ARGS);
 }
 
 void unsupported(int argc, int argv[], char response[])
