@@ -8,7 +8,7 @@
  *
  * These commands move multiple servos concurrently:
  * home
- * slew azimuth_brads, shoulder_brad, elbow_brads, azimuth_duration, shoulder_duration, elbow_duration
+ * slew azimuth_brads, azimuth_duration, shoulder_brad, shoulder_duration, elbow_brads, elbow_duration
  *
  * These commands use boolean arguments:
  * gripper, [0 | 1]
@@ -19,6 +19,12 @@
  */
 
 #include <Servo.h>
+
+/* This sketch uses binary angular measurement and subdivides the circle into
+ * 8192 brads per full rotation, and a servo has roughly 4096 brads of resolution.
+ */
+const int FULL_ROTATION = 8192;
+const int RIGHT_ANGLE = FULL_ROTATION / 4;
 
 // Precomputed hash values for commands.
 const unsigned int H_AZIMUTH = 53895;
@@ -73,7 +79,8 @@ void setup() {
   elbowServo.attach(ELBOW_PIN);
   gripperServo.attach(GRIPPER_PIN);
 
-  // initialize digital pin LED_BUILTIN as an output.
+  // initialize digital pin for buzzer and LED_BUILTIN as an outputs.
+  pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 }
 
@@ -205,10 +212,15 @@ void azimuth(int argc, int argv[], char response[])
   // arv[0] is angle in brads, argv[1] is duration of slew.
   if (argc > 1)
   {
-    // Convert brads into microseconds
-    int value = AZIMUTH_CENTER + argv[0];
+    // The azimuth axis has a range of -(right angle/2) to +(right angle/2)
+    // Convert this signed into unsigned value starting at zero to ease mapping.
+    int value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
 
+    // Map that value onto servo pulse widths and constrain.
+    value = map(value, 0, RIGHT_ANGLE, AZIMUTH_MIN, AZIMUTH_MAX);
     value = constrain(value, AZIMUTH_MIN, AZIMUTH_MAX);
+
+    // Move servo.
     azimuthServo.writeMicroseconds(value);
     sprintf(response, "azimuth - %d.", value);
   }
