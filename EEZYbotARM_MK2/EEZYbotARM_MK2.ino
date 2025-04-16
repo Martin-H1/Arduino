@@ -18,66 +18,70 @@
  * tone, hertz, duration
  */
 
-#include <Servo.h>
+//#define DEBUG  // if this line is commented, the debug macros are ignored.
+
+#include "Debug.h"
+#include "AsyncServo.h"
 
 /* This sketch uses binary angular measurement and subdivides the circle into
  * 8192 brads per full rotation, and a servo has roughly 4096 brads of resolution.
  */
-const int FULL_ROTATION = 8192;
-const int RIGHT_ANGLE = FULL_ROTATION / 4;
+const int16_t FULL_ROTATION = 8192;
+const int16_t RIGHT_ANGLE = FULL_ROTATION / 4;
 
 // Precomputed hash values for commands.
-const unsigned int H_AZIMUTH = 53895;
-const unsigned int H_SHOULDER = 23051;
-const unsigned int H_ELBOW = 37790;
-const unsigned int H_GRIPPER = 34814;
-const unsigned int H_HOME = 64910;
-const unsigned int H_SLEW = 63488;
-const unsigned int H_LED = 35770;
-const unsigned int H_TONE = 37435;
+const uint16_t H_AZIMUTH = 53895;
+const uint16_t H_SHOULDER = 23051;
+const uint16_t H_ELBOW = 37790;
+const uint16_t H_GRIPPER = 34814;
+const uint16_t H_HOME = 64910;
+const uint16_t H_SLEW = 63488;
+const uint16_t H_LED = 35770;
+const uint16_t H_TONE = 37435;
 
 // configuration constants used to convert brads to microseconds
-const int GRIPPER_PIN = 5;
-const int GRIPPER_CLOSED = 700;
-const int GRIPPER_OPEN = 1500;
+const uint8_t GRIPPER_PIN = 5;
+const uint16_t GRIPPER_CLOSED = 700;
+const uint16_t GRIPPER_CENTER = 1100;
+const uint16_t GRIPPER_OPEN = 1500;
 
-const int AZIMUTH_PIN = 2;
-const int AZIMUTH_MAX = 2260;
-const int AZIMUTH_CENTER = 1500;
-const int AZIMUTH_MIN = 600;
+const uint8_t AZIMUTH_PIN = 2;
+const uint16_t AZIMUTH_MAX = 2260;
+const uint16_t AZIMUTH_CENTER = 1500;
+const uint16_t AZIMUTH_MIN = 600;
 
-const int SHOULDER_PIN = 3;
-const int SHOULDER_MAX = 1750;
-const int SHOULDER_CENTER = 1300;
-const int SHOULDER_MIN = 850;
+const uint8_t SHOULDER_PIN = 3;
+const uint16_t SHOULDER_MAX = 1750;
+const uint16_t SHOULDER_CENTER = 1300;
+const uint16_t SHOULDER_MIN = 850;
 
-const int ELBOW_PIN = 4;
-const int ELBOW_MAX = 700;
-const int ELBOW_CENTER = 850;
-const int ELBOW_MIN = 1000;
+const uint8_t ELBOW_PIN = 4;
+const uint16_t ELBOW_MAX = 700;
+const uint16_t ELBOW_CENTER = 850;
+const uint16_t ELBOW_MIN = 1000;
 
-const int BUZZER_PIN = 12;
+const uint8_t BUZZER_PIN = 12;
 
-const int BRADS_IDX = 0;
-const int DURATION_IDX = 1;
-const int FREQUENCY_IDX = 0;
+const uint8_t BRADS_IDX = 0;
+const uint8_t DURATION_IDX = 1;
+const uint8_t FREQUENCY_IDX = 0;
 
 const char MISSING_ARGS[] = " - insuffcient arguments.";
 
 // Create servo objects for each channel
-Servo azimuthServo;
-Servo shoulderServo;
-Servo elbowServo;
-Servo gripperServo;
+AsyncServo azimuthServo;
+AsyncServo shoulderServo;
+AsyncServo elbowServo;
+AsyncServo gripperServo;
 
 void setup() {
   Serial.begin (9600);
 
-  // Bind servo objects to pins.
-  azimuthServo.attach(AZIMUTH_PIN);
-  shoulderServo.attach(SHOULDER_PIN);
-  elbowServo.attach(ELBOW_PIN);
-  gripperServo.attach(GRIPPER_PIN);
+  // Bind servo objects to pins and constraints.
+  azimuthServo.init(AZIMUTH_PIN, AZIMUTH_MIN, AZIMUTH_CENTER, AZIMUTH_MAX);
+  shoulderServo.init(SHOULDER_PIN, SHOULDER_MIN, SHOULDER_CENTER, SHOULDER_MAX);
+  elbowServo.init(ELBOW_PIN, ELBOW_MIN, ELBOW_CENTER, ELBOW_MAX);
+  gripperServo.init(GRIPPER_PIN, GRIPPER_CLOSED, GRIPPER_CENTER, GRIPPER_OPEN);
 
   // initialize digital pin for buzzer and LED_BUILTIN as an outputs.
   pinMode(BUZZER_PIN, OUTPUT);
@@ -86,10 +90,10 @@ void setup() {
 
 void loop() {
   // Variables for receiving and sending serial data
-  const unsigned int BUFFER_SIZE = 64; // how much serial data we expect before a newline
+  const uint8_t BUFFER_SIZE = 64; // how much serial data we expect before a newline
   static char input[BUFFER_SIZE];
   static char response[BUFFER_SIZE];
-  static unsigned int buffIdx = 0;
+  static uint8_t buffIdx = 0;
 
   // if serial data available, process it
   if (Serial.available () > 0) {
@@ -116,13 +120,19 @@ void loop() {
         break;
     }
   }
+
+  // Poll the servos to allow them to move to target positons.
+  azimuthServo.update();
+  shoulderServo.update();
+  elbowServo.update();
+  gripperServo.update();
 }
 
 /* The DJB2 hashing function for the command string.
  */
-unsigned int djb2Hash(char *str)
+uint16_t djb2Hash(char *str)
 {
-  unsigned int hash = 5381;
+  uint16_t hash = 5381;
   char c;
 
   while (c = *str++)
@@ -136,9 +146,9 @@ unsigned int djb2Hash(char *str)
  */
 void processCmd(char input[], char response[])
 {
-  const unsigned int MAX_ARGS = 6;     // Maxium number of arguments per command
-  int argv[MAX_ARGS];
-  unsigned int argc = 0;
+  const uint8_t MAX_ARGS = 6;     // Maxium number of arguments per command
+  int16_t argv[MAX_ARGS];
+  uint8_t argc = 0;
 
   // split the command into its parts
   char * token = strtok(input, ",");
@@ -146,7 +156,7 @@ void processCmd(char input[], char response[])
   // copy first token to the response buffer
   strcpy(response, token);
 
-  unsigned int hash = djb2Hash(response);
+  uint16_t hash = djb2Hash(response);
 
   // Extract the remaining tokens into the args array.
   token = strtok(NULL, ",");
@@ -157,7 +167,7 @@ void processCmd(char input[], char response[])
   }
 
   // Declare a function pointer that matches the processing routine signature.
-  int (*fptr)(int, int [], char []);
+  int16_t (*fptr)(int16_t, int16_t [], char []);
 
   // Select a processing routine using the precomputed hashes.
   switch (hash)
@@ -207,38 +217,52 @@ void processCmd(char input[], char response[])
 
 // Command handlers here
 
-void azimuth(int argc, int argv[], char response[])
+void azimuth(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew.
   if (argc > 1)
   {
     // The azimuth axis has a range of -(right angle/2) to +(right angle/2)
     // Convert this signed into unsigned value starting at zero to ease mapping.
-    int value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
+    int16_t value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
 
     // Map that value onto servo pulse widths and constrain.
     value = map(value, 0, RIGHT_ANGLE, AZIMUTH_MIN, AZIMUTH_MAX);
-    value = constrain(value, AZIMUTH_MIN, AZIMUTH_MAX);
 
     // Move servo.
-    azimuthServo.writeMicroseconds(value);
+    azimuthServo.setTarget(value, argv[DURATION_IDX]);
     sprintf(response, "azimuth - %d.", value);
   }
   else
     strcat(response, MISSING_ARGS);
 }
 
-void shoulder(int argc, int argv[], char response[])
+void shoulder(uint8_t argc, int16_t argv[], char response[])
+{
+  // arv[0] is angle in brads, argv[1] is duration of slew
+  if (argc > 1)
+  {
+    // The shoulder axis has a range of -(right angle/2) to +(right angle/2)
+    // Convert this signed into unsigned value starting at zero to ease mapping.
+    int16_t value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
+
+    // Map that value onto servo pulse widths and constrain.
+    value = map(value, 0, RIGHT_ANGLE, SHOULDER_MIN, SHOULDER_MAX);
+
+    // Move servo.
+    shoulderServo.setTarget(value, argv[DURATION_IDX]);
+    sprintf(response, "shoulder - %d.", value);
+  }
+  else
+    strcat(response, MISSING_ARGS);
+}
+
+void elbow(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
 }
 
-void elbow(int argc, int argv[], char response[])
-{
-  // arv[0] is angle in brads, argv[1] is duration of slew
-}
-
-void gripper(int argc, int argv[], char response[])
+void gripper(uint8_t argc, int16_t argv[], char response[])
 {
   if (argc > 0)
   {
@@ -250,27 +274,21 @@ void gripper(int argc, int argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
-void home(int argc, int argv[], char response[])
+void home(uint8_t argc, int16_t argv[], char response[])
 {
-  // set up arguments for each call.
-  argc = 2;
-  argv[BRADS_IDX] = AZIMUTH_CENTER;
-  argv[DURATION_IDX] = 1000;
-  azimuth(argc, argv, response);
-  argv[BRADS_IDX] = ELBOW_CENTER;
-  elbow(argc, argv, response);
-  argv[BRADS_IDX] = 0;
-  gripper(argc, argv, response);
-  argv[BRADS_IDX] = SHOULDER_CENTER;
-  shoulder(argc, argv, response);
+  // Set all servos to known starting positions.
+  azimuthServo.home();
+  shoulderServo.home();
+  elbowServo.home();
+  gripperServo.home();
 }
 
-void slew(int argc, int argv[], char response[])
+void slew(uint8_t argc, int16_t argv[], char response[])
 {
 
 }
 
-void led(int argc, int argv[], char response[])
+void led(uint8_t argc, int16_t argv[], char response[])
 {
   if (argc > 0)
   {
@@ -281,7 +299,7 @@ void led(int argc, int argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
-void buzzer(int argc, int argv[], char response[])
+void buzzer(uint8_t argc, int16_t argv[], char response[])
 {
   if (argc > 1)
   {
@@ -292,37 +310,7 @@ void buzzer(int argc, int argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
-void unsupported(int argc, int argv[], char response[])
+void unsupported(uint8_t argc, int16_t argv[], char response[])
 {
   strcat(response, " - unsupported command.");
-}
-
-void sweepAzimuth()
-{
-  for (int pos = 600; pos < 2200; pos++)
-  {
-    azimuthServo.writeMicroseconds(pos);
-    delay(5);
-  }
-
-  for (int pos = 2200; pos > 600; pos--)
-  {
-    azimuthServo.writeMicroseconds(pos);
-    delay(5);
-  }
-}
-
-void sweepShoulder()
-{
-  for (int pos = 750; pos < 1600; pos++)
-  {
-    shoulderServo.writeMicroseconds(pos);
-    delay(5);
-  }
-
-  for (int pos = 1600; pos > 750; pos--)
-  {
-    shoulderServo.writeMicroseconds(pos);
-    delay(5);
-  }
 }
