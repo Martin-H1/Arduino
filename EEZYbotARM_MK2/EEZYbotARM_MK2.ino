@@ -260,6 +260,21 @@ void shoulder(uint8_t argc, int16_t argv[], char response[])
 void elbow(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
+  if (argc > 1)
+  {
+    // The shoulder axis has a range of -(right angle/2) to +(right angle/2)
+    // Convert this signed into unsigned value starting at zero to ease mapping.
+    int16_t value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
+
+    // Map that value onto servo pulse widths and constrain.
+    value = map(value, 0, RIGHT_ANGLE, ELBOW_MIN, ELBOW_MAX);
+
+    // Move servo.
+    elbowServo.setTarget(value, argv[DURATION_IDX]);
+    sprintf(response, "elbow - %d.", value);
+  }
+  else
+    strcat(response, MISSING_ARGS);
 }
 
 void gripper(uint8_t argc, int16_t argv[], char response[])
