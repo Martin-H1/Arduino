@@ -40,26 +40,27 @@ const uint16_t H_LED = 35770;
 const uint16_t H_STATUS = 36169;
 const uint16_t H_TONE = 37435;
 
-// configuration constants used to convert brads to microseconds
+// Constants used to constrain joints to safe movement ranges, put
+// arm into a known good position, and convert brads to microseconds.
 const uint8_t  GRIPPER_PIN = 5;
 const uint16_t GRIPPER_CLOSED = 700;
-const uint16_t GRIPPER_CENTER = 1100;
 const uint16_t GRIPPER_OPEN = 1500;
+const uint16_t GRIPPER_HOME = 1500;
 
 const uint8_t  AZIMUTH_PIN = 2;
-const uint16_t AZIMUTH_MAX = 2260;
-const uint16_t AZIMUTH_CENTER = 1500;
 const uint16_t AZIMUTH_MIN = 600;
+const uint16_t AZIMUTH_MAX = 2260;
+const uint16_t AZIMUTH_HOME = 1500;
 
 const uint8_t  SHOULDER_PIN = 3;
-const uint16_t SHOULDER_MAX = 1750;
-const uint16_t SHOULDER_CENTER = 1300;
 const uint16_t SHOULDER_MIN = 850;
+const uint16_t SHOULDER_MAX = 1750;
+const uint16_t SHOULDER_HOME = 1350;
 
 const uint8_t  ELBOW_PIN = 4;
+const uint16_t ELBOW_MIN = 600;
 const uint16_t ELBOW_MAX = 2000;
-const uint16_t ELBOW_CENTER = 1500;
-const uint16_t ELBOW_MIN = 1000;
+const uint16_t ELBOW_HOME = 1100;
 
 const uint8_t  BUZZER_PIN = 12;
 
@@ -75,21 +76,30 @@ AsyncServo shoulderServo;
 AsyncServo elbowServo;
 AsyncServo gripperServo;
 
-void setup() {
+void setup()
+{
   Serial.begin (9600);
 
+  // Wait for serial communications to start before continuing
+  while (!Serial)
+    ; // delay for Leonardo
+
   // Bind servo objects to pins and constraints.
-  azimuthServo.init(AZIMUTH_PIN, AZIMUTH_MIN, AZIMUTH_CENTER, AZIMUTH_MAX);
-  shoulderServo.init(SHOULDER_PIN, SHOULDER_MIN, SHOULDER_CENTER, SHOULDER_MAX);
-  elbowServo.init(ELBOW_PIN, ELBOW_MIN, ELBOW_CENTER, ELBOW_MAX);
-  gripperServo.init(GRIPPER_PIN, GRIPPER_CLOSED, GRIPPER_CENTER, GRIPPER_OPEN);
+  azimuthServo.init( AZIMUTH_PIN,  AZIMUTH_MIN,    AZIMUTH_MAX,  AZIMUTH_HOME);
+  shoulderServo.init(SHOULDER_PIN, SHOULDER_MIN,   SHOULDER_MAX, SHOULDER_HOME);
+  elbowServo.init(   ELBOW_PIN,    ELBOW_MIN,      ELBOW_MAX,    ELBOW_HOME);
+  gripperServo.init( GRIPPER_PIN,  GRIPPER_CLOSED, GRIPPER_OPEN,  GRIPPER_HOME);
+
+  // Put the robot in known starting state.
+  home(0, NULL, NULL);
 
   // initialize digital pin for buzzer and LED_BUILTIN as an outputs.
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 }
 
-void loop() {
+void loop()
+{
   // Variables for receiving and sending serial data
   const uint8_t BUFFER_SIZE = 64; // how much serial data we expect before a newline
   static char input[BUFFER_SIZE];

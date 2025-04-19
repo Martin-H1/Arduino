@@ -9,8 +9,8 @@ class AsyncServo : public Servo
 {
   protected:
     uint16_t minMS;                    // servo constraint data.
-    uint16_t midMS;
     uint16_t maxMS;
+    uint16_t homeMS;
 
     uint16_t target = 0;               // target angle in microseconds.
     uint16_t current = 0;              // current angle in microseconds.
@@ -28,14 +28,14 @@ class AsyncServo : public Servo
   public:
     /* Binds the servo to a pin and sets up limits of movement.
     */
-    void init(uint8_t pin, uint16_t min, uint16_t mid, uint16_t max)
+    void init(uint8_t pin, uint16_t min, uint16_t max, uint16_t home)
     {
       this->attach(pin);
       minMS = min;
-      midMS = mid;
       maxMS = max;
-      rampUp = (mid - min) / 3;
-      rampDown = (mid - min) / 9;
+      homeMS = home;
+      rampUp = (max - min) / 3;
+      rampDown = (max - min) / 9;
     }
 
     /* Synchronously moves the servo to the home position.
@@ -43,9 +43,9 @@ class AsyncServo : public Servo
      */
     void home()
     {
-      this->writeMicroseconds(midMS);
-      this->current = midMS;
-      this->target = midMS;
+      this->writeMicroseconds(homeMS);
+      this->current = homeMS;
+      this->target = homeMS;
     }
 
     /* Sets the destination and movement duration.
