@@ -1,12 +1,13 @@
-#include <Servo.h>
+/* AsyncServo.h
+ * A servo sub class that moves the servo asynchronously via polling
+ * from the main loop function. It uses pulse width microseconds as
+  * the unit of angular measure to allow for integer arithmetic.
+ */
+ #include <Servo.h>
 
-// Create a servo sub class that moves the servo asynchronously
-// via polling from the main loop function. It uses pulse width
-// as the unit of angular measure to allow for integer arithmetic.
 class AsyncServo : public Servo
 {
   protected:
-    const uint16_t oneDegreeMS = 6;    // One degree is the increment or decrement amount.
     uint16_t minMS;                    // servo constraint data.
     uint16_t midMS;
     uint16_t maxMS;
@@ -15,10 +16,12 @@ class AsyncServo : public Servo
     uint16_t current = 0;              // current angle in microseconds.
     uint16_t startAngle = 0;           // what was the start angle in microseconds.
 
-    const uint8_t startInterval = 10;  // slow speed for start
-    uint8_t interval = startInterval;  // delay time
+    uint8_t minInterval = 5;
+    uint8_t startInterval;             // initial update time.
+    uint8_t interval;                  // current update time.
+
     uint32_t previousMillis = 0;       // last movement time.
-    uint16_t minInterval = 5;          // interval after rampUp but before ramp down (=max Speed)
+
     uint8_t rampUp;                    // angle used for ramp up trigger.
     uint8_t rampDown;                  // angle used for ramp down trigger.
 
@@ -49,11 +52,12 @@ class AsyncServo : public Servo
      */
     void setTarget(uint16_t target, uint16_t duration)
     {
-      // convert duration into min interval
       this->target = constrain(target, minMS, maxMS);
-      this->minInterval = 1;
       startAngle = current;
+
       interval = startInterval;
+
+      DPRINT("startInterval="); DPRINTLN(startInterval);
     }
 
     // Update is called in the loop function to iteratively move the servo into position.
@@ -92,11 +96,11 @@ class AsyncServo : public Servo
         DPRINT("interval="); DPRINTLN(interval);
         if (target < current)
         {
-          current -= oneDegreeMS;
+          current--;
         }
         else if (target > current)
         {
-          current += oneDegreeMS;
+          current++;
         }
         this->writeMicroseconds(current);
       }

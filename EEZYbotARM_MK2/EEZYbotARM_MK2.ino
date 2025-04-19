@@ -37,30 +37,31 @@ const uint16_t H_GRIPPER = 34814;
 const uint16_t H_HOME = 64910;
 const uint16_t H_SLEW = 63488;
 const uint16_t H_LED = 35770;
+const uint16_t H_STATUS = 36169;
 const uint16_t H_TONE = 37435;
 
 // configuration constants used to convert brads to microseconds
-const uint8_t GRIPPER_PIN = 5;
+const uint8_t  GRIPPER_PIN = 5;
 const uint16_t GRIPPER_CLOSED = 700;
 const uint16_t GRIPPER_CENTER = 1100;
 const uint16_t GRIPPER_OPEN = 1500;
 
-const uint8_t AZIMUTH_PIN = 2;
+const uint8_t  AZIMUTH_PIN = 2;
 const uint16_t AZIMUTH_MAX = 2260;
 const uint16_t AZIMUTH_CENTER = 1500;
 const uint16_t AZIMUTH_MIN = 600;
 
-const uint8_t SHOULDER_PIN = 3;
+const uint8_t  SHOULDER_PIN = 3;
 const uint16_t SHOULDER_MAX = 1750;
 const uint16_t SHOULDER_CENTER = 1300;
 const uint16_t SHOULDER_MIN = 850;
 
-const uint8_t ELBOW_PIN = 4;
-const uint16_t ELBOW_MAX = 700;
-const uint16_t ELBOW_CENTER = 850;
+const uint8_t  ELBOW_PIN = 4;
+const uint16_t ELBOW_MAX = 2000;
+const uint16_t ELBOW_CENTER = 1500;
 const uint16_t ELBOW_MIN = 1000;
 
-const uint8_t BUZZER_PIN = 12;
+const uint8_t  BUZZER_PIN = 12;
 
 const uint8_t BRADS_IDX = 0;
 const uint8_t DURATION_IDX = 1;
@@ -125,7 +126,6 @@ void loop() {
   azimuthServo.update();
   shoulderServo.update();
   elbowServo.update();
-  gripperServo.update();
 }
 
 /* The DJB2 hashing function for the command string.
@@ -158,6 +158,8 @@ void processCmd(char input[], char response[])
 
   uint16_t hash = djb2Hash(response);
 
+  DPRINT("command="); DPRINT(token); DPRINT(", hash="); DPRINTLN(hash);
+
   // Extract the remaining tokens into the args array.
   token = strtok(NULL, ",");
   while (token != NULL && argc < MAX_ARGS)
@@ -165,6 +167,11 @@ void processCmd(char input[], char response[])
     argv[argc++] = atoi(token);
     token = strtok(NULL, ",");
   }
+
+  // Conditionally print the argument count and first two arguments.
+  DPRINT("argc="); DPRINT(argc);
+  DPRINT(", argv[0]="); DPRINT(argv[0]);
+  DPRINT(", argv[1]="); DPRINTLN(argv[1]);
 
   // Declare a function pointer that matches the processing routine signature.
   int16_t (*fptr)(int16_t, int16_t [], char []);
@@ -200,11 +207,17 @@ void processCmd(char input[], char response[])
       fptr = led;
       break;
 
+    case H_STATUS:
+      fptr = status;
+      break;
+
     case H_TONE:
       fptr = buzzer;
       break;
 
     default:
+      argv[0] = response;
+      argv[1] = hash;
       fptr = unsupported;
   }
 
@@ -314,6 +327,16 @@ void led(uint8_t argc, int16_t argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
+void status(uint8_t argc, int16_t argv[], char response[])
+{
+  uint16_t azPos = azimuthServo.readMicroseconds();
+  uint16_t shPos = shoulderServo.readMicroseconds();
+  uint16_t elPos = elbowServo.readMicroseconds();
+  uint16_t grPos = gripperServo.readMicroseconds();
+
+  sprintf(response, "status - az=%u, sh=%u, el=%u, gr=%u", azPos, shPos, elPos, grPos);
+}
+
 void buzzer(uint8_t argc, int16_t argv[], char response[])
 {
   if (argc > 1)
@@ -327,5 +350,5 @@ void buzzer(uint8_t argc, int16_t argv[], char response[])
 
 void unsupported(uint8_t argc, int16_t argv[], char response[])
 {
-  strcat(response, " - unsupported command.");
+  sprintf(response, "%s - unsupported command, hash=%u", argv[0], argv[1]);
 }
