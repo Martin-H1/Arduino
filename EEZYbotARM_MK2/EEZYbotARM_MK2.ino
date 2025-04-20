@@ -27,12 +27,14 @@
  * 8192 brads per full rotation, and a servo has roughly 4096 brads of resolution.
  */
 const int16_t FULL_ROTATION = 8192;
+const int16_t ACUTE_ANGLE = FULL_ROTATION / 8;
 const int16_t RIGHT_ANGLE = FULL_ROTATION / 4;
+const int16_t OBTUSE_ANGLE = RIGHT_ANGLE + ACUTE_ANGLE;
 
 // Precomputed hash values for commands.
 const uint16_t H_AZIMUTH = 53895;
 const uint16_t H_SHOULDER = 23051;
-const uint16_t H_ELBOW = 37790;
+const uint16_t H_VARM = 28667;
 const uint16_t H_GRIPPER = 34814;
 const uint16_t H_HOME = 64910;
 const uint16_t H_SLEW = 63488;
@@ -49,7 +51,7 @@ const uint16_t GRIPPER_HOME = 1500;
 
 const uint8_t  AZIMUTH_PIN = 2;
 const uint16_t AZIMUTH_MIN = 600;
-const uint16_t AZIMUTH_MAX = 2260;
+const uint16_t AZIMUTH_MAX = 2200;
 const uint16_t AZIMUTH_HOME = 1500;
 
 const uint8_t  SHOULDER_PIN = 3;
@@ -57,10 +59,10 @@ const uint16_t SHOULDER_MIN = 850;
 const uint16_t SHOULDER_MAX = 1750;
 const uint16_t SHOULDER_HOME = 1350;
 
-const uint8_t  ELBOW_PIN = 4;
-const uint16_t ELBOW_MIN = 600;
-const uint16_t ELBOW_MAX = 2000;
-const uint16_t ELBOW_HOME = 1100;
+const uint8_t  VARM_PIN = 4;
+const uint16_t VARM_MIN = 700;
+const uint16_t VARM_MAX = 2000;
+const uint16_t VARM_HOME = 1100;
 
 const uint8_t  BUZZER_PIN = 12;
 
@@ -73,7 +75,7 @@ const char MISSING_ARGS[] = " - insuffcient arguments.";
 // Create servo objects for each channel
 AsyncServo azimuthServo;
 AsyncServo shoulderServo;
-AsyncServo elbowServo;
+AsyncServo varmServo;
 AsyncServo gripperServo;
 
 void setup()
@@ -87,7 +89,7 @@ void setup()
   // Bind servo objects to pins and constraints.
   azimuthServo.init( AZIMUTH_PIN,  AZIMUTH_MIN,    AZIMUTH_MAX,  AZIMUTH_HOME);
   shoulderServo.init(SHOULDER_PIN, SHOULDER_MIN,   SHOULDER_MAX, SHOULDER_HOME);
-  elbowServo.init(   ELBOW_PIN,    ELBOW_MIN,      ELBOW_MAX,    ELBOW_HOME);
+  varmServo.init(    VARM_PIN,     VARM_MIN,       VARM_MAX,     VARM_HOME);
   gripperServo.init( GRIPPER_PIN,  GRIPPER_CLOSED, GRIPPER_OPEN,  GRIPPER_HOME);
 
   // Put the robot in known starting state.
@@ -135,7 +137,7 @@ void loop()
   // Poll the servos to allow them to move to target positons.
   azimuthServo.update();
   shoulderServo.update();
-  elbowServo.update();
+  varmServo.update();
 }
 
 /* The DJB2 hashing function for the command string.
@@ -197,8 +199,8 @@ void processCmd(char input[], char response[])
       fptr = shoulder;
       break;
 
-    case H_ELBOW:
-      fptr = elbow;
+    case H_VARM:
+      fptr = varm;
       break;
 
     case H_GRIPPER:
@@ -240,17 +242,18 @@ void processCmd(char input[], char response[])
 
 // Command handlers here
 
+// The azimuth angle is measured from the X axis and the range of motion
+// is 45 to 135 degrees (1024 to 3072 brads).
 void azimuth(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew.
   if (argc > 1)
   {
-    // The azimuth axis has a range of -(right angle/2) to +(right angle/2)
-    // Convert this signed into unsigned value starting at zero to ease mapping.
-    int16_t value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
+    // Constrain the allowed inputs to the physical range of motion of the arm.
+    int16_t value = constrain(argv[0], ACUTE_ANGLE, OBTUSE_ANGLE);
 
     // Map that value onto servo pulse widths and constrain.
-    value = map(value, 0, RIGHT_ANGLE, AZIMUTH_MIN, AZIMUTH_MAX);
+    value = map(value, ACUTE_ANGLE, OBTUSE_ANGLE, AZIMUTH_MIN, AZIMUTH_MAX);
 
     // Move servo.
     azimuthServo.setTarget(value, argv[DURATION_IDX]);
@@ -260,17 +263,18 @@ void azimuth(uint8_t argc, int16_t argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
+// The shoulder angle is measure from the horizontal XY plane to the vertical Z axis.
+// It has a range of 45 to 135 degrees (1024 to 3072 brads).
 void shoulder(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
   if (argc > 1)
   {
-    // The shoulder axis has a range of -(right angle/2) to +(right angle/2)
-    // Convert this signed into unsigned value starting at zero to ease mapping.
-    int16_t value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
+    // Constrain the allowed inputs to the physical range of motion of the arm.
+    int16_t value = constrain(argv[0], ACUTE_ANGLE, OBTUSE_ANGLE);
 
     // Map that value onto servo pulse widths and constrain.
-    value = map(value, 0, RIGHT_ANGLE, SHOULDER_MIN, SHOULDER_MAX);
+    value = map(value, ACUTE_ANGLE, OBTUSE_ANGLE, SHOULDER_MIN, SHOULDER_MAX);
 
     // Move servo.
     shoulderServo.setTarget(value, argv[DURATION_IDX]);
@@ -280,21 +284,25 @@ void shoulder(uint8_t argc, int16_t argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
-void elbow(uint8_t argc, int16_t argv[], char response[])
+// The elbow is driven indirectly through the V arm linkage, and its angle
+// is the summation of the shoulder and V arm angles. The V arm angle is
+// measured relative to the Z axis and ranges from 45 to 150 degrees.
+void varm(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
   if (argc > 1)
   {
-    // The shoulder axis has a range of -(right angle/2) to +(right angle/2)
-    // Convert this signed into unsigned value starting at zero to ease mapping.
-    int16_t value = constrain((argv[0] + (RIGHT_ANGLE >> 1) ), 0, RIGHT_ANGLE);
+    // Constrain the allowed inputs to the physical range of motion of the arm.
+    // Note: Mechanical considerations limit the permissible angle as the shoulder
+    // angle varies. Care must be taken to avoid burning out the V arm servo!
+    int16_t value = constrain(argv[0], ACUTE_ANGLE, OBTUSE_ANGLE);
 
     // Map that value onto servo pulse widths and constrain.
-    value = map(value, 0, RIGHT_ANGLE, ELBOW_MIN, ELBOW_MAX);
+    value = map(value, ACUTE_ANGLE, OBTUSE_ANGLE, VARM_MIN, VARM_MAX);
 
     // Move servo.
-    elbowServo.setTarget(value, argv[DURATION_IDX]);
-    sprintf(response, "elbow - %d.", value);
+    varmServo.setTarget(value, argv[DURATION_IDX]);
+    sprintf(response, "varm - %d.", value);
   }
   else
     strcat(response, MISSING_ARGS);
@@ -317,7 +325,7 @@ void home(uint8_t argc, int16_t argv[], char response[])
   // Set all servos to known starting positions.
   azimuthServo.home();
   shoulderServo.home();
-  elbowServo.home();
+  varmServo.home();
   gripperServo.home();
 }
 
@@ -341,7 +349,7 @@ void status(uint8_t argc, int16_t argv[], char response[])
 {
   uint16_t azPos = azimuthServo.readMicroseconds();
   uint16_t shPos = shoulderServo.readMicroseconds();
-  uint16_t elPos = elbowServo.readMicroseconds();
+  uint16_t elPos = varmServo.readMicroseconds();
   uint16_t grPos = gripperServo.readMicroseconds();
 
   sprintf(response, "status - az=%u, sh=%u, el=%u, gr=%u", azPos, shPos, elPos, grPos);
