@@ -30,6 +30,7 @@ const int16_t FULL_ROTATION = 8192;
 const int16_t ACUTE_ANGLE = FULL_ROTATION / 8;
 const int16_t RIGHT_ANGLE = FULL_ROTATION / 4;
 const int16_t OBTUSE_ANGLE = RIGHT_ANGLE + ACUTE_ANGLE;
+const int16_t STRAIGHT_ANGLE = FULL_ROTATION / 2;
 
 // Precomputed hash values for commands.
 const uint16_t H_AZIMUTH = 53895;
@@ -76,7 +77,7 @@ void setup()
   //               pin, min ms, max ms,     min brads,     max brads, home
   azimuthServo.init( 2,   600,    2200,   ACUTE_ANGLE,  OBTUSE_ANGLE, RIGHT_ANGLE);
   shoulderServo.init(3,   850,    1750,   ACUTE_ANGLE,  OBTUSE_ANGLE, RIGHT_ANGLE);
-  varmServo.init(    4,   700,    2000,   0,            RIGHT_ANGLE,  ACUTE_ANGLE);
+  varmServo.init(    4,   700,    1500,   0,            RIGHT_ANGLE,  ACUTE_ANGLE);
   gripperServo.init( 5,   700,    1500,   0,            OBTUSE_ANGLE, RIGHT_ANGLE);
 
   // Put the robot in known starting state.
@@ -265,9 +266,10 @@ void shoulder(uint8_t argc, int16_t argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
-// The elbow is driven indirectly through the V arm linkage, and its angle
-// is the summation of the shoulder and V arm angles. The V arm angle is
-// measured relative to the Z axis and ranges from 45 to 150 degrees.
+// The elbow is driven indirectly through the V arm linkage, and its angle is
+// measured relative to the XY plane and ranges from 0 to almost 90 degrees.
+// The range of motion of this joint is constrained by the position of the
+// shoulder joint, and care must be taken to avoid burning out the servo.
 void varm(uint8_t argc, int16_t argv[], char response[])
 {
   // arv[0] is angle in brads, argv[1] is duration of slew
@@ -281,15 +283,17 @@ void varm(uint8_t argc, int16_t argv[], char response[])
     strcat(response, MISSING_ARGS);
 }
 
-// The elbow is moved by computing the required movements to the varm
-// joint based upon the shoulder position.
+// The elbow angle is measured relative to the main arm. If the arm could
+// fully extend the elbow would be at zero degrees. This method computes
+// the required varm setting to achieve the desired eblow angle.
 void elbow(uint8_t argc, int16_t argv[], char response[])
 {
   // agrv[0] is angle in brads, argv[1] is duration of slew
   if (argc > 1)
   {
+    // elbow angle = varm angle + shoulder angle, so
     // varm angle = elbow angle - shoulder angle
-    argv[0] -= shoulderServo.getTarget();
+    argv[0] = argv[0] - shoulderServo.getTarget();
 
     // Move servo.
     uint16_t target = varmServo.setTarget(argv[0], argv[DURATION_IDX]);
@@ -340,12 +344,12 @@ void led(uint8_t argc, int16_t argv[], char response[])
 
 void status(uint8_t argc, int16_t argv[], char response[])
 {
-  uint16_t azPos = azimuthServo.readMicroseconds();
-  uint16_t shPos = shoulderServo.readMicroseconds();
-  uint16_t elPos = varmServo.readMicroseconds();
-  uint16_t grPos = gripperServo.readMicroseconds();
+  uint16_t azPos = azimuthServo.getTarget();
+  uint16_t shPos = shoulderServo.getTarget();
+  uint16_t elPos = varmServo.getTarget();
+  uint16_t grPos = gripperServo.getTarget();
 
-  sprintf(response, "status - az=%u, sh=%u, el=%u, gr=%u", azPos, shPos, elPos, grPos);
+  sprintf(response, "status - az=%u, sh=%u, va=%u, gr=%u", azPos, shPos, elPos, grPos);
 }
 
 void buzzer(uint8_t argc, int16_t argv[], char response[])
