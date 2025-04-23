@@ -8,6 +8,9 @@
 class AsyncServo : public Servo
 {
   protected:
+    uint16_t minBr;                    // Min joint movement in brads
+    uint16_t maxBr;                    // Max joint movement in brads
+
     uint16_t minMS;                    // servo constraint data.
     uint16_t maxMS;
     uint16_t homeMS;
@@ -28,14 +31,20 @@ class AsyncServo : public Servo
   public:
     /* Binds the servo to a pin and sets up limits of movement.
     */
-    void init(uint8_t pin, uint16_t min, uint16_t max, uint16_t home)
+    void init(uint8_t pin, uint16_t min, uint16_t max, uint16_t minB, uint16_t maxB, uint16_t home)
     {
       this->attach(pin);
+      minBr = minB;
+      maxBr = maxB;
       minMS = min;
       maxMS = max;
       homeMS = home;
       rampUp = (max - min) / 3;
       rampDown = (max - min) / 9;
+
+      // Constrain the home position to the physical range of motion configured.
+      // Convert that value into servo pulse widths and constrain.
+      homeMS = map(constrain(home, minBr, maxBr), minBr, maxBr, minMS, maxMS);
     }
 
     /* Synchronously moves the servo to the home position.
@@ -48,16 +57,30 @@ class AsyncServo : public Servo
       this->target = homeMS;
     }
 
-    /* Sets the destination and movement duration.
+    /* Gets the target in brads.
      */
-    void setTarget(uint16_t target, uint16_t duration)
+    uint16_t getTarget()
     {
-      this->target = constrain(target, minMS, maxMS);
-      startAngle = current;
+      // Convert that value into servo pulse widths and constrain.
+      return map(target, minMS, maxMS,  minBr, maxBr);
+    }
 
+    /* Sets the target (in brads) and movement duration (in ms).
+     */
+    uint16_t setTarget(uint16_t target, uint16_t duration)
+    {
+      // Constrain the allowed input to the physical range of motion configured.
+      int16_t value = constrain(target, minBr, maxBr);
+
+      // Convert that value into servo pulse widths and constrain.
+      value = map(value, minBr, maxBr, minMS, maxMS);
+      this->target = constrain(value, minMS, maxMS);
+
+      startAngle = current;
       interval = startInterval;
 
       DPRINT("startInterval="); DPRINTLN(startInterval);
+      return this->target;
     }
 
     // Update is called in the loop function to iteratively move the servo into position.
